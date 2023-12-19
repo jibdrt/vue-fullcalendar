@@ -35,7 +35,6 @@
                 <div class="date-end">
                   <datetime v-model="newEvent.end" minute-interval="15" type="datetime-local" noLabel
                     format="YYYY-MM-DD HH:mm:ss" />
-
                 </div>
               </div>
               <div class="modal-checkboxes">
@@ -145,7 +144,7 @@ export default {
       axios.get('/customers', { params: { paginate: 1000 } })
         .then((response) => {
           this.customers = response.data.data;
-          console.log(this.customers);
+          console.log('(customers:)', this.customers);
         })
         .catch((error) => {
           console.error(error);
@@ -179,7 +178,7 @@ export default {
 
         info.el.appendChild(tooltip);
 
-        // Hide le tooltip
+        // Hide tooltip
         tooltip.style.display = 'none';
 
         // On hover
@@ -206,7 +205,7 @@ export default {
           boxShadow: 'rgb(0 0 0 / 20%) 0px 6px 9px 0px'
         };
 
-        // Loop pour style les tooltips
+        // Loop tooltips style
         Object.keys(tooltipStyle).forEach((prop) => {
           tooltip.style[prop] = tooltipStyle[prop];
         });
@@ -216,13 +215,13 @@ export default {
 
 
     fetchEventsFromBackend() {
-      // Fetch les events du back-end
+      // Fetch events
       return axios
         .get(this.apiUrl)
         .then((response) => {
           console.log('API Response:', response.data);
 
-          // Populate array event avec les données de chaque item
+          // Populate events array
           this.calendarOptions.events = response.data.map((event) => {
             const color = event.color;
             const textColor = this.calculateEventTextColor(color);
@@ -249,24 +248,25 @@ export default {
         });
     },
     saveEvent() {
-      // Créer un object pour représenter l'évènement
+      // Create event object
       const eventData = {
-        event_client: this.newEvent.client.name,
+        event_client: this.newEvent.client ? this.newEvent.client.name : '',
         event_name: this.newEvent.title,
         event_desc: this.newEvent.desc,
-        event_start: this.$moment(this.newEvent.start).utcOffset(120).format(), // Convertir to UTC+2
-        event_end: this.$moment(this.newEvent.end).utcOffset(120).format(),
-        event_color: this.newEvent.color.hex, // Stocker le code couleur
+        event_start: this.$moment(this.newEvent.start).utcOffset(60).format(), // Convertir to UTC+1
+        event_end: this.$moment(this.newEvent.end).utcOffset(60).format(),
+        event_color: this.newEvent.color.hex, // Store color code
         event_iswritten: this.newEvent.iswritten,
         event_isprog: this.newEvent.isprog
       };
 
       if (this.editingEvent) {
-        // Dans le cas où on update un event existant
+        // When updating existing
         axios
           .patch(`/calendar/${this.editingEvent.id}`, eventData)
           .then((response) => {
             console.log('Event updated:', response.data);
+            console.log('eventPatchedData:', eventData);
             this.editingEvent.setExtendedProp('client', eventData.event_client);
             this.editingEvent.setProp('title', eventData.event_name);
             this.editingEvent.setExtendedProp('description', eventData.event_desc);
@@ -284,13 +284,14 @@ export default {
             console.error('Error updating event:', error);
           });
       } else {
-        // Dans le cas où on crée un nouvel event
+        // When creating new
         axios
           .post('/calendar', eventData)
           .then((response) => {
             console.log('Event created:', response.data);
+            console.log('created new event:', eventData);
 
-            // Set l'ID pour éviter erreurs
+            // Set id to avoid error
             const newEvent = {
               id: response.data.id,
               client: eventData.event_client,
@@ -303,13 +304,12 @@ export default {
               isprog: eventData.event_isprog
             };
 
-            // Push sur le calendrier
+            // Push into events
             this.calendarOptions.events.push(newEvent);
 
-            // Cacher la modal
             this.showEventModal = false;
 
-            // Clear les fields pour manip suivante
+            // Clear fields for next operation
             this.newEvent = {
               client: '',
               title: '',
@@ -329,16 +329,25 @@ export default {
     handleEventClick(info) {
       const event = info.event;
       this.editingEvent = event;
-      this.newEvent.client = event.extendedProps.client;
+      const clientName = event.extendedProps.client;
+      if (clientName) {
+        const foundClient = this.customers.find(customer => customer.name === clientName);
+          if (foundClient) {
+            this.newEvent.client = foundClient;
+          } else {
+            console.warn('Pas de client trouvé pour:', clientName);
+            this.newEvent.client = '';
+          }
+      } else {
+        console.warn('Nom du client undefined');
+        this.newEvent.client = '';
+      }
       this.newEvent.title = event.title;
       this.newEvent.desc = event.extendedProps.description;
       this.newEvent.color = { hex: event.backgroundColor };
       this.newEvent.iswritten = event.extendedProps.iswritten;
       this.newEvent.isprog = event.extendedProps.isprog;
       this.modalTitle = 'Modifier un évènement';
-
-      console.log(event.client);
-
       if (event.start) {
         this.newEvent.start = this.$moment(event.start).format('YYYY-MM-DDTHH:mm');
       }
@@ -350,20 +359,12 @@ export default {
     handleDateClick(selectionInfo) {
 
       if (selectionInfo && selectionInfo.start) {
-        // Clear les champs TODO
 
         this.showEventModal = false;
 
-        // Set le départ en fonction du jour cliqué
         const start = new Date(selectionInfo.start);
 
-        // Set the start time to 8:00 AM
-        start.setHours(8, 0, 0); // TODO - ne fonctionne pas
-
         const end = new Date(start);
-
-        // TODO - ne fonctionne pas
-        end.setHours(18, 0, 0);
 
         const formattedStartDate = start.toISOString().slice(0, 16);
         const formattedEndDate = end.toISOString().slice(0, 16);
@@ -393,23 +394,20 @@ export default {
         return;
       }
 
-      const eventId = this.editingEvent.id; // Récupérer l'ID de l'event concerné
+      const eventId = this.editingEvent.id;
 
-      // Delete en back et DB
       axios
         .delete(`/calendar/${eventId}`)
         .then(() => {
           console.log('Event deleted successfully');
 
-          // Remove the deleted event from the UI
+          // Remove deleted event from UI
           this.removeEventFromCalendar(eventId);
 
-          // Close the modal
           this.showEventModal = false;
         })
         .catch((error) => {
           console.error('Error deleting event:', error);
-          // Handle the error
         });
     },
     removeEventFromCalendar(eventId) {
@@ -417,21 +415,17 @@ export default {
       calendarApi.getEventById(eventId)?.remove();
     },
     handleDateRangeSelect(selectionInfo) {
-      // Récupérer le début et fin depuis la séléction
       const start = selectionInfo.startStr;
       const end = selectionInfo.endStr;
 
-      // Formattage pour les input datetime-local de la modal
       const formattedStartDate = new Date(start).toISOString().slice(0, 16);
       const formattedEndDate = new Date(end).toISOString().slice(0, 16);
 
-      // Set le début et fin pour la création du nouvel event
       this.newEvent.start = formattedStartDate;
       this.newEvent.end = formattedEndDate;
 
       this.modalTitle = 'Ajouter un évènement';
 
-      // Ouvrir la modal
       this.showEventModal = true;
     },
     handleEventDrop(info) {
@@ -440,17 +434,15 @@ export default {
       if (event.start && event.end) {
 
         const eventId = event.id;
-        const newStart = this.$moment(event.start).utcOffset(120).format(); // Convertir vers UTC+2 (éviter le moins 2 heures à chaque update d'évènement)
-        const newEnd = this.$moment(event.end).utcOffset(120).format();
+        const newStart = this.$moment(event.start).utcOffset(60).format();
+        const newEnd = this.$moment(event.end).utcOffset(60).format();
 
-        // Trouver l'event dans l'array et update
         const foundEvent = this.calendarOptions.events.find((e) => e.id === eventId);
         if (foundEvent) {
           foundEvent.start = newStart;
           foundEvent.end = newEnd;
         }
 
-        // Requête pour mettre à jour en base
         axios
           .patch(`/calendar/${eventId}/update-times`, {
             event_start: newStart,
@@ -485,7 +477,6 @@ export default {
     },
     handleEscapeKey(event) {
       if (event.key === 'Escape') {
-        // Close the modal
         this.closeEventModal();
       }
     },
@@ -496,13 +487,9 @@ export default {
       this.$refs.fullCalendar.$on('eventClick', (info) => {
         const event = info.event;
 
-        // Ouvrir la modal pour éditer
         this.showEventModal = true;
-
-        // Stocker l'event cliqué pour l'éditer
         this.editingEvent = event;
 
-        // Remplir les champs avec les données de l'édition
         this.newEvent.client = event.client;
         this.newEvent.title = event.title;
         this.newEvent.desc = event.desc;
